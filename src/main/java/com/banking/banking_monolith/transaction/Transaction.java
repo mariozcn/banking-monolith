@@ -22,11 +22,9 @@ public class Transaction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
     @ManyToOne
     @JoinColumn(name="sender",nullable = false)
     private Account sender;
-
 
     @ManyToOne
     @JoinColumn(name="receiver",nullable = false)
