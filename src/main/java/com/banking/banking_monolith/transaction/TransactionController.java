@@ -1,10 +1,27 @@
 package com.banking.banking_monolith.transaction;
 
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/transactions")
 public class TransactionController {
+    private final TransactionService transactionService;
 
+    public TransactionController(TransactionService transactionService) {
+        this.transactionService = transactionService;
+    }
+
+    @GetMapping
+    public List<TransactionResponse> getAllTransactions(){
+        return transactionService.getAllTransactions();
+    }
+
+    @PostMapping
+    public ResponseEntity<TransactionResponse> newTransaction(@Valid @RequestBody TransactionRequest transactionRequest){
+        TransactionResponse response = transactionService.transfer(transactionRequest);
+        return ResponseEntity.ok(response);
+    }
 }

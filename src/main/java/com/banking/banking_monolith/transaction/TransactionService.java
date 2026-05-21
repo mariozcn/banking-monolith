@@ -6,6 +6,7 @@ import com.banking.banking_monolith.account.AccountRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -44,10 +45,15 @@ public class TransactionService {
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
         }
-
-
-
-
         return TransactionResponse.from(transaction);
+    }
+
+    public List<TransactionResponse> getAllTransactions(){
+        List<Transaction> transactionList = transactionRepository.findAll();
+        List<TransactionResponse> transactionResponses = transactionList.stream()
+                .map(TransactionResponse::from)
+                .toList();
+
+        return transactionResponses;
     }
 }
