@@ -42,4 +42,7 @@ public class Account {
     @Generated(event = {EventType.INSERT, EventType.UPDATE})
     @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
     private Instant updatedAt;
+
+    @Version
+    private Integer version;
 }
