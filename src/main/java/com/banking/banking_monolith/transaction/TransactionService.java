@@ -3,24 +3,43 @@ package com.banking.banking_monolith.transaction;
 
 import com.banking.banking_monolith.account.Account;
 import com.banking.banking_monolith.account.AccountRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final RedisTemplate<String,String> redisTemplate;
+    private final ObjectMapper objectMapper;
 
-    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository) {
+    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
-    public TransactionResponse transfer(TransactionRequest transactionRequest){
+    public TransactionResponse transfer(TransactionRequest transactionRequest, String idempotencyKey){
+        try{
+            String cached = redisTemplate.opsForValue().get(idempotencyKey);
+            if(cached != null){
+                TransactionResponse response = objectMapper.readValue(cached,TransactionResponse.class);
+                return response;
+            }
+        }catch(JsonProcessingException e){
+            throw new RuntimeException("error deserializing cached response",e);
+        }
+
         Optional<Account> sender = accountRepository.findByAccountNumber(transactionRequest.sender());
         Account senderAccount = sender.orElseThrow(() -> new RuntimeException("Sender not found"));
 
@@ -45,7 +64,16 @@ public class TransactionService {
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
         }
-        return TransactionResponse.from(transaction);
+
+
+        TransactionResponse response = TransactionResponse.from(transaction);
+        try{
+            String json = objectMapper.writeValueAsString(response);
+            redisTemplate.opsForValue().set(idempotencyKey,json,24, TimeUnit.HOURS);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        return response;
     }
 
     public List<TransactionResponse> getAllTransactions(){

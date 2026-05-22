@@ -20,8 +20,13 @@ public class TransactionController {
     }
 
     @PostMapping
-    public ResponseEntity<TransactionResponse> newTransaction(@Valid @RequestBody TransactionRequest transactionRequest){
-        TransactionResponse response = transactionService.transfer(transactionRequest);
+    public ResponseEntity<TransactionResponse> newTransaction(
+            @Valid @RequestBody TransactionRequest transactionRequest,
+            @RequestHeader("Idempotency-Key") String idempotencyKey)
+    {
+
+
+        TransactionResponse response = transactionService.transfer(transactionRequest,idempotencyKey);
         return ResponseEntity.ok(response);
     }
 }
