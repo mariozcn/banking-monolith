@@ -3,6 +3,8 @@ package com.banking.banking_monolith.transaction;
 
 import com.banking.banking_monolith.account.Account;
 import com.banking.banking_monolith.account.AccountRepository;
+import com.banking.banking_monolith.audit.AuditAction;
+import com.banking.banking_monolith.audit.AuditLogService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,12 +22,14 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final RedisTemplate<String,String> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final AuditLogService auditLogService;
 
-    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper) {
+    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper, AuditLogService auditLogService) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -60,9 +64,12 @@ public class TransactionService {
 
             transaction.setStatus(TransactionStatus.COMPLETED);
             transactionRepository.save(transaction);
+            auditLogService.log(AuditAction.TRANSFER,"TRANSACTION", transaction.getId(), "Transfer of " + transactionRequest.amount() + " " + transactionRequest.currency());
+
         }else{
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
+            auditLogService.log(AuditAction.TRANSFER,"transfer", transaction.getId(), "Transfer failed - insufficient funds");
         }
 
 
