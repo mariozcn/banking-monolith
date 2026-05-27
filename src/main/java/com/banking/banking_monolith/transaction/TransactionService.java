@@ -5,8 +5,10 @@ import com.banking.banking_monolith.account.Account;
 import com.banking.banking_monolith.account.AccountRepository;
 import com.banking.banking_monolith.audit.AuditAction;
 import com.banking.banking_monolith.audit.AuditLogService;
+import com.banking.banking_monolith.notification.Notification;
+import com.banking.banking_monolith.notification.NotificationService;
+import com.banking.banking_monolith.notification.NotificationType;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -23,17 +25,20 @@ public class TransactionService {
     private final RedisTemplate<String,String> redisTemplate;
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
-    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper, AuditLogService auditLogService) {
+    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper, AuditLogService auditLogService, NotificationService notificationService) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
     public TransactionResponse transfer(TransactionRequest transactionRequest, String idempotencyKey){
+        //redis cache
         try{
             String cached = redisTemplate.opsForValue().get(idempotencyKey);
             if(cached != null){
@@ -50,12 +55,16 @@ public class TransactionService {
         Optional<Account> receiver = accountRepository.findByAccountNumber(transactionRequest.receiver());
         Account receiverAccount = receiver.orElseThrow(() -> new RuntimeException("Receiver not found"));
 
+
+
         Transaction transaction = new Transaction();
         transaction.setCurrency(transactionRequest.currency());
         transaction.setAmount(transactionRequest.amount());
         transaction.setSender(senderAccount);
         transaction.setReceiver(receiverAccount);
 
+
+        //TRANSFER PROPRIU ZIS
         if((senderAccount.getBalance().compareTo(transactionRequest.amount())) >= 0){
             senderAccount.setBalance(senderAccount.getBalance().subtract(transactionRequest.amount()));
             receiverAccount.setBalance(receiverAccount.getBalance().add(transactionRequest.amount()));
@@ -65,6 +74,17 @@ public class TransactionService {
             transaction.setStatus(TransactionStatus.COMPLETED);
             transactionRepository.save(transaction);
             auditLogService.log(AuditAction.TRANSFER,"TRANSACTION", transaction.getId(), "Transfer of " + transactionRequest.amount() + " " + transactionRequest.currency());
+
+
+
+            //NOTIFICATIONS
+            notificationService.sendNotification(senderAccount.getAccountNumber(),
+                    NotificationType.TRANSFER_SENT,
+                    "You've sent " + transactionRequest.amount() + " " + transactionRequest.currency() + " to " + receiverAccount.getAccountNumber());
+
+            notificationService.sendNotification(receiverAccount.getAccountNumber(),
+                    NotificationType.TRANSFER_RECEIVED,
+                    senderAccount.getOwnerName() + " sent you " + transactionRequest.amount() + transactionRequest.currency());
 
         }else{
             transaction.setStatus(TransactionStatus.FAILED);
