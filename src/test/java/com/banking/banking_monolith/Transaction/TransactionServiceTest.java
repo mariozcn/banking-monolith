@@ -82,4 +82,41 @@ public class TransactionServiceTest {
 
         assertEquals(0, BigDecimal.valueOf(50).compareTo(receiverAfter.getBalance()));
     }
+
+    @Test
+    void transfer_insufficientFunds_shouldFail(){
+        Account senderAccount = accountRepository.
+                findByAccountNumber(senderAccountNumber)
+                .orElseThrow(
+                        () -> new RuntimeException("No acc found")
+                );
+        Account receiverAccount = accountRepository.
+                findByAccountNumber(receiverAccountNumber)
+                .orElseThrow(
+                        () -> new RuntimeException("No acc found")
+                );
+        //switch sender with receiver (receiver has 0 balance)
+        TransactionRequest transactionRequest = new TransactionRequest(receiverAccountNumber,senderAccountNumber,
+                BigDecimal.valueOf(50), "RON");
+
+        TransactionResponse transactionResponse = transactionService.transfer(transactionRequest,"abcd");
+
+        Account receiverAfter = accountRepository.findByAccountNumber(receiverAccountNumber).orElseThrow();
+        Account senderAfter = accountRepository.findByAccountNumber(senderAccountNumber).orElseThrow();
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(receiverAccount.getBalance()));
+        assertEquals(0, BigDecimal.valueOf(100).compareTo(senderAfter.getBalance()));
+        assertEquals(TransactionStatus.FAILED,transactionResponse.status());
+    }
+
+    @Test
+    void transfer_senderNotFound_shouldThrowException() {
+        TransactionRequest transactionRequest = new TransactionRequest("ABC1231231",receiverAccountNumber, BigDecimal.valueOf(50), "RON");
+
+
+
+        assertThrows(RuntimeException.class, () -> {
+            transactionService.transfer(transactionRequest, "abcde");
+        });
+    }
 }
