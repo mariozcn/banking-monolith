@@ -5,12 +5,12 @@ import com.banking.banking_monolith.account.Account;
 import com.banking.banking_monolith.account.AccountRepository;
 import com.banking.banking_monolith.audit.AuditAction;
 import com.banking.banking_monolith.audit.AuditLogService;
-import com.banking.banking_monolith.notification.Notification;
+import com.banking.banking_monolith.event.TransferCompletedEvent;
 import com.banking.banking_monolith.notification.NotificationService;
-import com.banking.banking_monolith.notification.NotificationType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,14 +26,16 @@ public class TransactionService {
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper, AuditLogService auditLogService, NotificationService notificationService) {
+    public TransactionService(TransactionRepository transactionRepository, AccountRepository accountRepository, RedisTemplate<String, String> redisTemplate, ObjectMapper objectMapper, AuditLogService auditLogService, NotificationService notificationService, KafkaTemplate<String, Object> kafkaTemplate) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
         this.notificationService = notificationService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     @Transactional
@@ -78,13 +80,16 @@ public class TransactionService {
 
 
             //NOTIFICATIONS
-            notificationService.sendNotification(senderAccount.getAccountNumber(),
-                    NotificationType.TRANSFER_SENT,
-                    "You've sent " + transactionRequest.amount() + " " + transactionRequest.currency() + " to " + receiverAccount.getAccountNumber());
+            TransferCompletedEvent event = new TransferCompletedEvent(
+                    senderAccount.getAccountNumber(),
+                    receiverAccount.getAccountNumber(),
+                    senderAccount.getOwnerName(),
+                    receiverAccount.getOwnerName(),
+                    transactionRequest.currency(),
+                    transactionRequest.amount()
+            );
 
-            notificationService.sendNotification(receiverAccount.getAccountNumber(),
-                    NotificationType.TRANSFER_RECEIVED,
-                    senderAccount.getOwnerName() + " sent you " + transactionRequest.amount() + transactionRequest.currency());
+            kafkaTemplate.send("transaction-events",event);
 
         }else{
             transaction.setStatus(TransactionStatus.FAILED);
